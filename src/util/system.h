@@ -89,6 +89,7 @@ void CreatePidFile(const fs::path &path, pid_t pid);
 #ifdef WIN32
 fs::path GetSpecialFolderPath(int nFolder, bool fCreate = true);
 #endif
+std::string ShellEscape(const std::string& arg);
 void runCommand(const std::string& strCommand);
 
 /**

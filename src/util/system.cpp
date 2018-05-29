@@ -73,6 +73,7 @@
 #include <malloc.h>
 #endif
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/thread.hpp>
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
@@ -1158,6 +1159,13 @@ fs::path GetSpecialFolderPath(int nFolder, bool fCreate)
     return fs::path("");
 }
 #endif
+
+std::string ShellEscape(const std::string& arg)
+{
+    std::string escaped = arg;
+    boost::replace_all(escaped, "'", "'\"'\"'");
+    return "'" + escaped + "'";
+}
 
 void runCommand(const std::string& strCommand)
 {
