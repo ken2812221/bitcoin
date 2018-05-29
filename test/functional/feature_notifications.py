@@ -16,6 +16,7 @@ class NotificationsTest(BitcoinTestFramework):
         self.setup_clean_chain = True
 
     def setup_network(self):
+        self.wallet = 't- \'$X%${Y}1'
         self.alertnotify_dir = os.path.join(self.options.tmpdir, "alertnotify")
         self.blocknotify_dir = os.path.join(self.options.tmpdir, "blocknotify")
         self.walletnotify_dir = os.path.join(self.options.tmpdir, "walletnotify")
@@ -29,7 +30,8 @@ class NotificationsTest(BitcoinTestFramework):
                             "-blocknotify=echo > {}".format(os.path.join(self.blocknotify_dir, '%s'))],
                            ["-blockversion=211",
                             "-rescan",
-                            "-walletnotify=echo > {}".format(os.path.join(self.walletnotify_dir, '%s'))]]
+                            "-wallet={}".format(self.wallet),
+                            "-walletnotify=echo > {}".format(os.path.join(self.walletnotify_dir, '%w_%s'))]]
         super().setup_network()
 
     def run_test(self):
@@ -49,7 +51,7 @@ class NotificationsTest(BitcoinTestFramework):
             wait_until(lambda: len(os.listdir(self.walletnotify_dir)) == block_count, timeout=10)
 
             # directory content should equal the generated transaction hashes
-            txids_rpc = list(map(lambda t: t['txid'], self.nodes[1].listtransactions("*", block_count)))
+            txids_rpc = list(map(lambda t: '{}_{}'.format(self.wallet, t['txid']), self.nodes[1].listtransactions("*", block_count)))
             assert_equal(sorted(txids_rpc), sorted(os.listdir(self.walletnotify_dir)))
             self.stop_node(1)
             for tx_file in os.listdir(self.walletnotify_dir):
@@ -63,7 +65,7 @@ class NotificationsTest(BitcoinTestFramework):
             wait_until(lambda: len(os.listdir(self.walletnotify_dir)) == block_count, timeout=10)
 
             # directory content should equal the generated transaction hashes
-            txids_rpc = list(map(lambda t: t['txid'], self.nodes[1].listtransactions("*", block_count)))
+            txids_rpc = list(map(lambda t: '{}_{}'.format(self.wallet, t['txid']), self.nodes[1].listtransactions("*", block_count)))
             assert_equal(sorted(txids_rpc), sorted(os.listdir(self.walletnotify_dir)))
 
         # Mine another 41 up-version blocks. -alertnotify should trigger on the 51st.
