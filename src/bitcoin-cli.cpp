@@ -24,6 +24,10 @@
 
 #include <univalue.h>
 
+#ifdef WIN32
+#include <shellapi.h>
+#endif
+
 static const char DEFAULT_RPCCONNECT[] = "127.0.0.1";
 static const int DEFAULT_HTTP_CLIENT_TIMEOUT=900;
 static const bool DEFAULT_NAMED=false;
@@ -385,7 +389,7 @@ static UniValue CallRPC(BaseRequestHandler *rh, const std::string& strMethod, co
         if (failedToGetAuthCookie) {
             throw std::runtime_error(strprintf(
                 "Could not locate RPC credentials. No authentication cookie could be found, and RPC password is not set.  See -rpcpassword and -stdinrpcpass.  Configuration file: (%s)",
-                GetConfigFile(gArgs.GetArg("-conf", BITCOIN_CONF_FILENAME)).string().c_str()));
+                GetConfigFile(gArgs.GetArg("-conf", BITCOIN_CONF_FILENAME)).u8string().c_str()));
         } else {
             throw std::runtime_error("Authorization failed: Incorrect rpcuser or rpcpassword");
         }
@@ -408,13 +412,15 @@ static UniValue CallRPC(BaseRequestHandler *rh, const std::string& strMethod, co
 static int CommandLineRPC(int argc, char *argv[])
 {
     std::string strPrint;
+    int skip = 0;
     int nRet = 0;
     try {
         // Skip switches
         while (argc > 1 && IsSwitchChar(argv[1][0])) {
-            argc--;
-            argv++;
+            ++skip;
         }
+        argc -= skip;
+        argv += skip;
         std::string rpcPass;
         if (gArgs.GetBoolArg("-stdinrpcpass", false)) {
             if (!std::getline(std::cin, rpcPass)) {
@@ -422,7 +428,19 @@ static int CommandLineRPC(int argc, char *argv[])
             }
             gArgs.ForceSetArg("-rpcpassword", rpcPass);
         }
+#ifndef WIN32
         std::vector<std::string> args = std::vector<std::string>(&argv[1], &argv[argc]);
+#else
+        int wargc;
+        wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+        wargc -= skip;
+        wargv += skip;
+        std::vector<std::wstring> wargs = std::vector<std::wstring>(&wargv[1], &wargv[wargc]);
+        std::vector<std::string> args;
+        for (std::wstring& warg : wargs) {
+            args.push_back(WideToUtf8(warg));
+        }
+#endif
         if (gArgs.GetBoolArg("-stdin", false)) {
             // Read one arg per line from stdin and append
             std::string line;
