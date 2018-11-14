@@ -1160,12 +1160,67 @@ fs::path GetSpecialFolderPath(int nFolder, bool fCreate)
 }
 #endif
 
+#ifdef WIN32
+std::wstring ArgvQuote(const std::wstring& arg)
+{
+    if (!arg.empty() && arg.find_first_of(L" \t\n\v\"") == arg.npos) {
+        return arg;
+    }
+    std::wstring escaped;
+    escaped.push_back(L'"');
+    for (auto it = arg.begin(); ; ++it) {
+        unsigned backslashes = 0;
+        while (it != arg.end () && *it == L'\\') {
+            ++it;
+            ++backslashes;
+        }
+        if (it == arg.end()) {
+            // Escape all backslashes, but let the terminating double quotation
+            // mark we add below be interpreted as a metacharacter
+            escaped.append(backslashes * 2, L'\\');
+            break;
+        } else if (*it == L'"') {
+            // Escape all backslashes and the following double quotation mark
+            escaped.append(backslashes * 2 + 1, L'\\');
+            escaped.push_back(*it);
+        } else {
+            // Backslashes aren't special here
+            escaped.append(backslashes, L'\\');
+            escaped.push_back(*it);
+        }
+    }
+    escaped.push_back(L'"');
+    return escaped;
+}
+
+std::wstring s2ws(const std::string& str)
+{
+    using convert_typeX = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_typeX, wchar_t> converterX;
+
+    return converterX.from_bytes(str);
+}
+
+std::string ws2s(const std::wstring& wstr)
+{
+    using convert_typeX = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_typeX, wchar_t> converterX;
+
+    return converterX.to_bytes(wstr);
+}
+
+std::string ShellEscape(const std::string& arg)
+{
+    return ws2s(ArgvQuote(s2ws(arg)));
+}
+#else
 std::string ShellEscape(const std::string& arg)
 {
     std::string escaped = arg;
     boost::replace_all(escaped, "'", "'\"'\"'");
     return "'" + escaped + "'";
 }
+#endif
 
 void runCommand(const std::string& strCommand)
 {
