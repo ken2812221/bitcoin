@@ -9,6 +9,11 @@ from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, wait_until, connect_nodes_bi
 
+# Linux allow all characters other than \x00
+# Windows disallow control characters (0-31) and /\?%:|"<>
+FILE_CHAR_START = 32 if os.name == 'nt' else 1
+FILE_CHAR_END = 128
+FILE_CHAR_BLACKLIST = '/\\?%*:|"<>' if os.name == 'nt' else '/'
 
 class NotificationsTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -16,7 +21,7 @@ class NotificationsTest(BitcoinTestFramework):
         self.setup_clean_chain = True
 
     def setup_network(self):
-        self.wallet = 't- \'$X%${Y}1'
+        self.wallet = ''.join(chr(i) for i in range(FILE_CHAR_START, FILE_CHAR_END) if chr(i) not in FILE_CHAR_BLACKLIST)
         self.alertnotify_dir = os.path.join(self.options.tmpdir, "alertnotify")
         self.blocknotify_dir = os.path.join(self.options.tmpdir, "blocknotify")
         self.walletnotify_dir = os.path.join(self.options.tmpdir, "walletnotify")
