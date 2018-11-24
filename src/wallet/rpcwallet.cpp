@@ -559,6 +559,72 @@ static UniValue signmessage(const JSONRPCRequest& request)
     return EncodeBase64(vchSig.data(), vchSig.size());
 }
 
+static UniValue GetReceived(interfaces::Chain::Lock& locked_chain, CWallet * const wallet, const UniValue& params, bool by_label) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet)
+{
+    LockAnnotation lock(::cs_main); // Temporary, for CheckFinalTx below. Removed in upcoming commit.
+
+    std::set<CTxDestination> addresses;
+
+    if (by_label) {
+        // Get the set of pub keys assigned to label
+        std::string label = LabelFromValue(params[0]);
+        addresses = wallet->GetLabelAddresses(label);
+    } else {
+        // Get the address
+        CTxDestination dest = DecodeDestination(params[0].get_str());
+        if (!IsValidDestination(dest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+        }
+        CScript script_pub_key = GetScriptForDestination(dest);
+        if (!IsMine(*wallet, script_pub_key)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Address not found in wallet");
+        }
+        addresses.insert(dest);
+    }
+
+    // Minimum confirmations
+    int min_depth = 1;
+    if (!params[1].isNull()) {
+        min_depth = params[1].get_int();
+    }
+
+    bool include_immature = false;
+    if (!params[2].isNull()) {
+        include_immature = params[2].get_bool();
+    }
+
+    // Hidden parameter include_coinbase exists for backwards compatibility
+    // Older versions incorrectly filtered out coinbase txs
+    // Can be removed at a later date if no reports of broken workflow
+    bool include_coinbase = true;
+    if (!params[3].isNull()) {
+        include_coinbase = params[3].get_bool();
+    }
+
+    // Tally
+    CAmount amount = 0;
+    for (const std::pair<const uint256, CWalletTx>& wtx_pair : wallet->mapWallet) {
+        const CWalletTx& wtx = wtx_pair.second;
+        int depth = wtx.GetDepthInMainChain(locked_chain);
+        if (depth < min_depth
+            // Coinbase with less than 1 confirmation is an orphan
+            || (wtx.IsCoinBase() && (depth < 1 || !include_coinbase))
+            || (!include_immature && wtx.IsImmatureCoinBase(locked_chain))
+            || !CheckFinalTx(*wtx.tx)) {
+            continue;
+        }
+
+        for (const CTxOut& txout : wtx.tx->vout) {
+            CTxDestination address;
+            if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*wallet, address) && addresses.count(address)) {
+                amount += txout.nValue;
+            }
+        }
+    }
+
+    return  ValueFromAmount(amount);
+}
+
 static UniValue getreceivedbyaddress(const JSONRPCRequest& request)
 {
     std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
@@ -568,13 +634,14 @@ static UniValue getreceivedbyaddress(const JSONRPCRequest& request)
         return NullUniValue;
     }
 
-    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 4)
         throw std::runtime_error(
             RPCHelpMan{"getreceivedbyaddress",
                 "\nReturns the total amount received by the given address in transactions with at least minconf confirmations.\n",
                 {
                     {"address", RPCArg::Type::STR, /* opt */ false, /* default_val */ "", "The bitcoin address for transactions."},
                     {"minconf", RPCArg::Type::NUM, /* opt */ true, /* default_val */ "1", "Only include transactions confirmed at least this many times."},
+                    {"include_immature", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ false, "Include immature coinbase transactions."},
                 }}
                 .ToString() +
             "\nResult:\n"
@@ -586,47 +653,20 @@ static UniValue getreceivedbyaddress(const JSONRPCRequest& request)
             + HelpExampleCli("getreceivedbyaddress", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XX\" 0") +
             "\nThe amount with at least 6 confirmations\n"
             + HelpExampleCli("getreceivedbyaddress", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XX\" 6") +
+            "\nThe amount with at least 6 confirmations including immature coinbase outputs\n"
+            + HelpExampleCli("getreceivedbyaddress", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XX\" 6 true") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("getreceivedbyaddress", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XX\", 6")
+            + HelpExampleRpc("getreceivedbyaddress", "\"1D1ZrZNe3JUo7ZycKEYQQiQAWd9y54F4XX\", 6, true")
        );
 
     // Make sure the results are valid at least up to the most recent block
     // the user could have gotten from another RPC command prior to now
     pwallet->BlockUntilSyncedToCurrentChain();
 
-    LockAnnotation lock(::cs_main); // Temporary, for CheckFinalTx below. Removed in upcoming commit.
     auto locked_chain = pwallet->chain().lock();
     LOCK(pwallet->cs_wallet);
 
-    // Bitcoin address
-    CTxDestination dest = DecodeDestination(request.params[0].get_str());
-    if (!IsValidDestination(dest)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
-    }
-    CScript scriptPubKey = GetScriptForDestination(dest);
-    if (!IsMine(*pwallet, scriptPubKey)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Address not found in wallet");
-    }
-
-    // Minimum confirmations
-    int nMinDepth = 1;
-    if (!request.params[1].isNull())
-        nMinDepth = request.params[1].get_int();
-
-    // Tally
-    CAmount nAmount = 0;
-    for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
-        const CWalletTx& wtx = pairWtx.second;
-        if (wtx.IsCoinBase() || !CheckFinalTx(*wtx.tx))
-            continue;
-
-        for (const CTxOut& txout : wtx.tx->vout)
-            if (txout.scriptPubKey == scriptPubKey)
-                if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
-                    nAmount += txout.nValue;
-    }
-
-    return  ValueFromAmount(nAmount);
+    return GetReceived(*locked_chain, pwallet, request.params, false);
 }
 
 
@@ -639,13 +679,14 @@ static UniValue getreceivedbylabel(const JSONRPCRequest& request)
         return NullUniValue;
     }
 
-    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 4)
         throw std::runtime_error(
             RPCHelpMan{"getreceivedbylabel",
                 "\nReturns the total amount received by addresses with <label> in transactions with at least [minconf] confirmations.\n",
                 {
                     {"label", RPCArg::Type::STR, /* opt */ false, /* default_val */ "", "The selected label, may be the default label using \"\"."},
                     {"minconf", RPCArg::Type::NUM, /* opt */ true, /* default_val */ "1", "Only include transactions confirmed at least this many times."},
+                    {"include_immature", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ false, "Include immature coinbase transactions."},
                 }}
                 .ToString() +
             "\nResult:\n"
@@ -657,47 +698,21 @@ static UniValue getreceivedbylabel(const JSONRPCRequest& request)
             + HelpExampleCli("getreceivedbylabel", "\"tabby\" 0") +
             "\nThe amount with at least 6 confirmations\n"
             + HelpExampleCli("getreceivedbylabel", "\"tabby\" 6") +
+            "\nThe amount with at least 6 confirmations including immature coinbase outputs\n"
+            + HelpExampleCli("getreceivedbylabel", "\"tabby\" 6 true") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("getreceivedbylabel", "\"tabby\", 6")
+            + HelpExampleRpc("getreceivedbylabel", "\"tabby\", 6, true")
         );
 
     // Make sure the results are valid at least up to the most recent block
     // the user could have gotten from another RPC command prior to now
     pwallet->BlockUntilSyncedToCurrentChain();
 
-    LockAnnotation lock(::cs_main); // Temporary, for CheckFinalTx below. Removed in upcoming commit.
     auto locked_chain = pwallet->chain().lock();
     LOCK(pwallet->cs_wallet);
 
-    // Minimum confirmations
-    int nMinDepth = 1;
-    if (!request.params[1].isNull())
-        nMinDepth = request.params[1].get_int();
-
-    // Get the set of pub keys assigned to label
-    std::string label = LabelFromValue(request.params[0]);
-    std::set<CTxDestination> setAddress = pwallet->GetLabelAddresses(label);
-
-    // Tally
-    CAmount nAmount = 0;
-    for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
-        const CWalletTx& wtx = pairWtx.second;
-        if (wtx.IsCoinBase() || !CheckFinalTx(*wtx.tx))
-            continue;
-
-        for (const CTxOut& txout : wtx.tx->vout)
-        {
-            CTxDestination address;
-            if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*pwallet, address) && setAddress.count(address)) {
-                if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
-                    nAmount += txout.nValue;
-            }
-        }
-    }
-
-    return ValueFromAmount(nAmount);
+    return GetReceived(*locked_chain, pwallet, request.params, true);
 }
-
 
 static UniValue getbalance(const JSONRPCRequest& request)
 {
@@ -1053,7 +1068,7 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
 
     bool has_filtered_address = false;
     CTxDestination filtered_address = CNoDestination();
-    if (!by_label && params.size() > 3) {
+    if (!by_label && !params[3].isNull() && !params[3].get_str().empty()) {
         if (!IsValidDestinationString(params[3].get_str())) {
             throw JSONRPCError(RPC_WALLET_ERROR, "address_filter parameter was invalid");
         }
@@ -1061,16 +1076,34 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
         has_filtered_address = true;
     }
 
+    int next_index = by_label ? 3 : 4;
+    bool include_immature = false;
+    if (!params[next_index].isNull()) {
+        include_immature = params[next_index].get_bool();
+    }
+
+    // Hidden parameter include_coinbase exists for backwards compatibility
+    // Older versions incorrectly filtered out coinbase txs
+    // Can be removed at a later date if no reports of broken workflow
+    next_index++;
+    bool include_coinbase = true;
+    if (!params[next_index].isNull()) {
+        include_coinbase = params[next_index].get_bool();
+    }
+
     // Tally
     std::map<CTxDestination, tallyitem> mapTally;
     for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
         const CWalletTx& wtx = pairWtx.second;
 
-        if (wtx.IsCoinBase() || !CheckFinalTx(*wtx.tx))
+        int depth = wtx.GetDepthInMainChain(locked_chain);
+        if (depth < nMinDepth)
             continue;
 
-        int nDepth = wtx.GetDepthInMainChain(locked_chain);
-        if (nDepth < nMinDepth)
+        // Coinbase with less than 1 confirmation is an orphan
+        if ((wtx.IsCoinBase() && (depth < 1 || !include_coinbase))
+            || (!include_immature && wtx.IsImmatureCoinBase(locked_chain))
+            || !CheckFinalTx(*wtx.tx))
             continue;
 
         for (const CTxOut& txout : wtx.tx->vout)
@@ -1089,7 +1122,7 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
 
             tallyitem& item = mapTally[address];
             item.nAmount += txout.nValue;
-            item.nConf = std::min(item.nConf, nDepth);
+            item.nConf = std::min(item.nConf, depth);
             item.txids.push_back(wtx.GetHash());
             if (mine & ISMINE_WATCH_ONLY)
                 item.fIsWatchonly = true;
@@ -1187,7 +1220,7 @@ static UniValue listreceivedbyaddress(const JSONRPCRequest& request)
         return NullUniValue;
     }
 
-    if (request.fHelp || request.params.size() > 4)
+    if (request.fHelp || request.params.size() > 6)
         throw std::runtime_error(
             RPCHelpMan{"listreceivedbyaddress",
                 "\nList balances by receiving address.\n",
@@ -1196,6 +1229,7 @@ static UniValue listreceivedbyaddress(const JSONRPCRequest& request)
                     {"include_empty", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ "false", "Whether to include addresses that haven't received any payments."},
                     {"include_watchonly", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ "false", "Whether to include watch-only addresses (see 'importaddress')."},
                     {"address_filter", RPCArg::Type::STR, /* opt */ true, /* default_val */ "null", "If present, only return information on this address."},
+                    {"include_immature", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ false, "Include immature coinbase transactions."},
                 }}
                 .ToString() +
             "\nResult:\n"
@@ -1217,8 +1251,10 @@ static UniValue listreceivedbyaddress(const JSONRPCRequest& request)
             "\nExamples:\n"
             + HelpExampleCli("listreceivedbyaddress", "")
             + HelpExampleCli("listreceivedbyaddress", "6 true")
+            + HelpExampleCli("listreceivedbyaddress", "6 true true "" true")
             + HelpExampleRpc("listreceivedbyaddress", "6, true, true")
-            + HelpExampleRpc("listreceivedbyaddress", "6, true, true, \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\"")
+            + HelpExampleRpc("listreceivedbyaddress", "6, true, true, null, true")
+            + HelpExampleRpc("listreceivedbyaddress", "6, true, true, \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", true")
         );
 
     // Make sure the results are valid at least up to the most recent block
@@ -1240,7 +1276,7 @@ static UniValue listreceivedbylabel(const JSONRPCRequest& request)
         return NullUniValue;
     }
 
-    if (request.fHelp || request.params.size() > 3)
+    if (request.fHelp || request.params.size() > 5)
         throw std::runtime_error(
             RPCHelpMan{"listreceivedbylabel",
                 "\nList received transactions by label.\n",
@@ -1248,6 +1284,7 @@ static UniValue listreceivedbylabel(const JSONRPCRequest& request)
                     {"minconf", RPCArg::Type::NUM, /* opt */ true, /* default_val */ "1", "The minimum number of confirmations before payments are included."},
                     {"include_empty", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ "false", "Whether to include labels that haven't received any payments."},
                     {"include_watchonly", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ "false", "Whether to include watch-only addresses (see 'importaddress')."},
+                    {"include_immature", RPCArg::Type::BOOL, /* opt */ true, /* default_val */ false, "Include immature coinbase transactions."},
                 }}
                 .ToString() +
             "\nResult:\n"
@@ -1264,7 +1301,8 @@ static UniValue listreceivedbylabel(const JSONRPCRequest& request)
             "\nExamples:\n"
             + HelpExampleCli("listreceivedbylabel", "")
             + HelpExampleCli("listreceivedbylabel", "6 true")
-            + HelpExampleRpc("listreceivedbylabel", "6, true, true")
+            + HelpExampleCli("listreceivedbylabel", "6 true true")
+            + HelpExampleRpc("listreceivedbylabel", "6, true, true, true")
         );
 
     // Make sure the results are valid at least up to the most recent block
@@ -4144,8 +4182,8 @@ static const CRPCCommand commands[] =
     { "wallet",             "getbalance",                       &getbalance,                    {"dummy","minconf","include_watchonly"} },
     { "wallet",             "getnewaddress",                    &getnewaddress,                 {"label","address_type"} },
     { "wallet",             "getrawchangeaddress",              &getrawchangeaddress,           {"address_type"} },
-    { "wallet",             "getreceivedbyaddress",             &getreceivedbyaddress,          {"address","minconf"} },
-    { "wallet",             "getreceivedbylabel",               &getreceivedbylabel,            {"label","minconf"} },
+    { "wallet",             "getreceivedbyaddress",             &getreceivedbyaddress,          {"address","minconf","include_immature","include_coinbase"} },
+    { "wallet",             "getreceivedbylabel",               &getreceivedbylabel,            {"label","minconf","include_immature","include_coinbase"} },
     { "wallet",             "gettransaction",                   &gettransaction,                {"txid","include_watchonly"} },
     { "wallet",             "getunconfirmedbalance",            &getunconfirmedbalance,         {} },
     { "wallet",             "getwalletinfo",                    &getwalletinfo,                 {} },
@@ -4159,8 +4197,8 @@ static const CRPCCommand commands[] =
     { "wallet",             "listaddressgroupings",             &listaddressgroupings,          {} },
     { "wallet",             "listlabels",                       &listlabels,                    {"purpose"} },
     { "wallet",             "listlockunspent",                  &listlockunspent,               {} },
-    { "wallet",             "listreceivedbyaddress",            &listreceivedbyaddress,         {"minconf","include_empty","include_watchonly","address_filter"} },
-    { "wallet",             "listreceivedbylabel",              &listreceivedbylabel,           {"minconf","include_empty","include_watchonly"} },
+    { "wallet",             "listreceivedbyaddress",            &listreceivedbyaddress,         {"minconf","include_empty","include_watchonly","address_filter","include_immature","include_coinbase"} },
+    { "wallet",             "listreceivedbylabel",              &listreceivedbylabel,           {"minconf","include_empty","include_watchonly","include_immature","include_coinbase"} },
     { "wallet",             "listsinceblock",                   &listsinceblock,                {"blockhash","target_confirmations","include_watchonly","include_removed"} },
     { "wallet",             "listtransactions",                 &listtransactions,              {"label|dummy","count","skip","include_watchonly"} },
     { "wallet",             "listunspent",                      &listunspent,                   {"minconf","maxconf","addresses","include_unsafe","query_options"} },
