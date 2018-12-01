@@ -1076,6 +1076,8 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
         has_filtered_address = true;
     }
 
+    // getreceivedbyaddress has address filter at 3rd index, so next params index is 4
+    // getreceivedbylabel has no filter parameter, so next params index is 3
     int next_index = by_label ? 3 : 4;
     bool include_immature = false;
     if (!params[next_index].isNull()) {
