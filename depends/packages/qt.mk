@@ -1,20 +1,20 @@
 PACKAGE=qt
-$(package)_version=5.9.7
-$(package)_download_path=https://download.qt.io/official_releases/qt/5.9/$($(package)_version)/submodules
-$(package)_suffix=opensource-src-$($(package)_version).tar.xz
+$(package)_version=5.12.1
+$(package)_download_path=https://download.qt.io/official_releases/qt/5.12/$($(package)_version)/submodules
+$(package)_suffix=everywhere-src-$($(package)_version).tar.xz
 $(package)_file_name=qtbase-$($(package)_suffix)
-$(package)_sha256_hash=36dd9574f006eaa1e5af780e4b33d11fe39d09fd7c12f3b9d83294174bd28f00
+$(package)_sha256_hash=533078ce02678988576e224cb3844979907950cf83e0fda3364bc1d5701c9049
 $(package)_dependencies=openssl zlib
 $(package)_linux_dependencies=freetype fontconfig libxcb libX11 xproto libXext
 $(package)_build_subdir=qtbase
 $(package)_qt_libs=corelib network widgets gui plugins testlib
-$(package)_patches=fix_qt_pkgconfig.patch mac-qmake.conf fix_configure_mac.patch fix_no_printer.patch fix_rcc_determinism.patch fix_riscv64_arch.patch xkb-default.patch
+$(package)_patches=mac-qmake.conf fix_configure_mac.patch fix_no_printer.patch fix_rcc_determinism.patch fix_riscv64_arch.patch xkb-default.patch
 
 $(package)_qttranslations_file_name=qttranslations-$($(package)_suffix)
-$(package)_qttranslations_sha256_hash=b36da7d93c3ab6fca56b32053bb73bc619c8b192bb89b74e3bcde2705f1c2a14
+$(package)_qttranslations_sha256_hash=7443d70d8572321e810c52fbdd096666e61510e07e17437f1910f0b800cca6a7
 
 $(package)_qttools_file_name=qttools-$($(package)_suffix)
-$(package)_qttools_sha256_hash=d62e0f70d99645d6704dbb8976fb2222443061743689943d40970c52c49367a1
+$(package)_qttools_sha256_hash=ab1da4fbd84a9d3873e4ed212a0ae614c6059b8e7dca2f0a599a6f7e61f6cbf3
 
 $(package)_extra_sources  = $($(package)_qttranslations_file_name)
 $(package)_extra_sources += $($(package)_qttools_file_name)
@@ -147,7 +147,6 @@ define $(package)_preprocess_cmds
   cp -f $($(package)_patch_dir)/mac-qmake.conf qtbase/mkspecs/macx-clang-linux/qmake.conf && \
   cp -r qtbase/mkspecs/linux-arm-gnueabi-g++ qtbase/mkspecs/bitcoin-linux-g++ && \
   sed -i.old "s/arm-linux-gnueabi-/$(host)-/g" qtbase/mkspecs/bitcoin-linux-g++/qmake.conf && \
-  patch -p1 -i $($(package)_patch_dir)/fix_qt_pkgconfig.patch &&\
   patch -p1 -i $($(package)_patch_dir)/fix_configure_mac.patch &&\
   patch -p1 -i $($(package)_patch_dir)/fix_no_printer.patch &&\
   patch -p1 -i $($(package)_patch_dir)/fix_rcc_determinism.patch &&\
