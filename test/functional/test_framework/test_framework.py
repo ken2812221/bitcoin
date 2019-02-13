@@ -549,6 +549,11 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         if not self.is_cli_compiled():
             raise SkipTest("bitcoin-cli has not been compiled.")
 
+    def skip_if_no_runcommand(self, node):
+        """Skip the running test if runcommand has not been compiled."""
+        if not self.is_runcommand_compiled(node):
+            raise SkipTest("runcommand has not been compiled.")
+
     def is_cli_compiled(self):
         """Checks whether bitcoin-cli was compiled."""
         config = configparser.ConfigParser()
@@ -569,3 +574,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         config.read_file(open(self.options.configfile))
 
         return config["components"].getboolean("ENABLE_ZMQ")
+
+    def is_runcommand_compiled(self, node):
+        """Checks whether runcommand was compiled."""
+        return node.help("runcommand") != "help: unknown command: runcommand"
