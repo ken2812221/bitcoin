@@ -8,7 +8,11 @@
 #include <chainparamsbase.h>
 #include <random.h>
 #include <serialize.h>
+#include <univalue.h>
 #include <util/strencodings.h>
+#if BOOST_VERSION >= 106400
+#include <boost/process.hpp>
+#endif
 
 #include <stdarg.h>
 
@@ -1150,6 +1154,33 @@ void runCommand(const std::string& strCommand)
     if (nErr)
         LogPrintf("runCommand error: system(%s) returned %d\n", strCommand, nErr);
 }
+
+#if BOOST_VERSION >= 106400
+UniValue runCommandParseJSON(const std::string& strCommand)
+{
+    UniValue resultJSON;
+
+    if (strCommand.empty()) return UniValue::VNULL;
+
+    namespace bp = boost::process;
+
+    bp::ipstream p;
+
+    bp::child c(
+        strCommand,
+        bp::std_out > p
+    );
+
+    std::string result;
+    std::getline(p, result);
+
+    c.wait();
+
+    if (!resultJSON.read(result)) throw std::runtime_error("Unable to parse JSON: " + result);
+
+    return resultJSON;
+}
+#endif
 
 void RenameThread(const char* name)
 {
