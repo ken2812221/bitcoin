@@ -19,7 +19,7 @@ install:
 # - cmd: pip install zmq
 - cmd: git -C c:\tools\vcpkg pull -q
 - cmd: vcpkg remove --outdated --recurse
-- cmd: vcpkg install --triplet %PLATFORM%-windows-static %PACKAGES% > NUL
+- cmd: vcpkg install --triplet %PLATFORM%-windows-static %PACKAGES% > NUL & type C:\Tools\vcpkg\buildtrees\boost-coroutine\build-x64-windows-static-dbg-out.log
 - cmd: del /s /q C:\Tools\vcpkg\installed\%PLATFORM%-windows-static\debug # Remove unused debug library
 before_build:
 - ps:  clcache -M 536870912
