@@ -45,24 +45,23 @@ private:
     //! The worker threads
     std::vector<std::thread> m_threads;
 
-    //! The number of workers (including the master) that are idle.
-    int nIdle GUARDED_BY(mutex) = 0;
-
     //! The total number of workers (including the master).
-    int nTotal GUARDED_BY(mutex) = 0;
+    int nTotal = 0;
 
     //! The temporary evaluation result.
     bool fAllOk GUARDED_BY(mutex) = true;
 
     //! The interrupt flag.
-    bool interrupted GUARDED_BY(mutex) = false;
+    std::atomic<bool> interrupted{false};
+
+    std::atomic<unsigned int> nIndex{ 0 };
 
     /**
      * Number of verifications that haven't completed yet.
      * This includes elements that are no longer queued, but still in the
      * worker's own batches.
      */
-    unsigned int nTodo GUARDED_BY(mutex) = 0;
+    std::atomic<unsigned int> nTodo{ 0 };
 
     //! The maximum number of elements to be processed in one batch
     const unsigned int nBatchSize;
@@ -70,65 +69,38 @@ private:
     /** Internal function that does bulk of the verification work. */
     bool Loop(const bool fMaster = false)
     {
-        std::condition_variable& cond = fMaster ? condMaster : condWorker;
-        std::vector<T> vChecks;
-        vChecks.reserve(nBatchSize);
-        unsigned int nNow = 0;
         bool fOk = true;
-        do {
-            {
-                WAIT_LOCK(mutex, lock);
-                // first do the clean-up of the previous loop run (allowing us to do it in the same critsect)
-                if (nNow) {
-                    fAllOk &= fOk;
-                    nTodo -= nNow;
-                    if (nTodo == 0 && !fMaster)
-                        // We processed the last element; inform the master it can exit and return the result
-                        condMaster.notify_one();
-                } else {
-                    // first iteration
-                    nTotal++;
-                }
-                // logically, the do loop starts here
-                while (queue.empty()) {
-                    if (fMaster && nTodo == 0) {
-                        nTotal--;
-                        bool fRet = fAllOk;
-                        // reset the status for new work later
-                        fAllOk = true;
-                        // return the current status
-                        return fRet;
-                    } else if (!fMaster && interrupted) {
-                        nTotal--;
-                        return false;
-                    } else {
-                        nIdle++;
-                        cond.wait(lock); // wait
-                        nIdle--;
-                    }
-                }
-                // Decide how many work units to process now.
-                // * Do not try to do everything at once, but aim for increasingly smaller batches so
-                //   all workers finish approximately simultaneously.
-                // * Try to account for idle jobs which will instantly start helping.
-                // * Don't do batches smaller than 1 (duh), or larger than nBatchSize.
-                nNow = std::max(1U, std::min(nBatchSize, (unsigned int)queue.size() / (nTotal + nIdle + 1)));
-                vChecks.resize(nNow);
-                for (unsigned int i = 0; i < nNow; i++) {
-                    // We want the lock on the mutex to be as short as possible, so swap jobs from the global
-                    // queue to the local batch vector instead of copying.
-                    vChecks[i].swap(queue.back());
-                    queue.pop_back();
-                }
-                // Check whether we need to do work at all
-                fOk = fAllOk;
+        while (true) {
+            int index = nIndex.fetch_add(1, std::memory_order_acq_rel);
+            if (index < nTotal) {
+                fOk &= queue[index]();
+                nTodo.fetch_sub(1, std::memory_order_acquire);
             }
-            // execute work
-            for (T& check : vChecks)
-                if (fOk)
-                    fOk = check();
-            vChecks.clear();
-        } while (true);
+            else {
+                WAIT_LOCK(mutex, lock);
+                if (fMaster) {
+                    condMaster.wait(lock, [this]() EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+                        return nTodo.load(std::memory_order_release) == 0;
+                    });
+                    bool fRet = fAllOk;
+                    fAllOk = true;
+                    return fRet;
+                }
+                else {
+                    fAllOk &= fOk;
+                    if (nTodo.load(std::memory_order_release) == 0) {
+                        condMaster.notify_one();
+                    }
+                    if (interrupted.load(std::memory_order_release)) {
+                        return true;
+                    }
+                    condWorker.wait(lock, [this]() EXCLUSIVE_LOCKS_REQUIRED(mutex) { 
+                        return interrupted.load(std::memory_order_release) || nIndex.load(std::memory_order_release) < nTotal;
+                    });
+                    fOk = true;
+                }
+            }
+        }
     }
 
 public:
@@ -152,7 +124,8 @@ public:
             queue.push_back(T());
             check.swap(queue.back());
         }
-        nTodo += vChecks.size();
+        nTodo.fetch_add(vChecks.size(), std::memory_order_acq_rel);
+        nIndex.store(0, std::memory_order_acq_rel);
         if (vChecks.size() == 1)
             condWorker.notify_one();
         else if (vChecks.size() > 1)
@@ -162,10 +135,7 @@ public:
     void Start(const int n_threads, const char* const thread_name = nullptr)
     {
         assert(m_threads.size() == 0);
-        {
-            LOCK(mutex);
-            interrupted = false;
-        }
+        interrupted.store(false , std::memory_order_acquire);
         if (n_threads <= 0) return;
         m_threads.reserve(n_threads);
         for (int i = 0; i < n_threads; i++) {
@@ -178,10 +148,7 @@ public:
 
     void Interrupt()
     {
-        {
-            LOCK2(ControlMutex, mutex);
-            interrupted = true;
-        }
+        interrupted.store(true, std::memory_order_acq_rel);
         condWorker.notify_all();
     }
 
