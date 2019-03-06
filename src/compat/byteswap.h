@@ -29,7 +29,7 @@
 
 #endif // !defined(bswap_16)
 
-#else
+#elif !defined GOOGLE_PROTOBUF_VERSION
 // Non-Mac OS X / non-Darwin
 
 #if HAVE_DECL_BSWAP_16 == 0
