@@ -2,10 +2,10 @@
  <PropertyGroup>
     <VcpkgTriplet Condition="'$(Platform)'=='Win32'">x86-windows-static</VcpkgTriplet>
     <VcpkgTriplet Condition="'$(Platform)'=='x64'">x64-windows-static</VcpkgTriplet>
-    <QtIncludeDir>C:\Qt5.9.7_ssl_x64_static_vs2017\include</QtIncludeDir>
-    <QtLibraryDir>C:\Qt5.9.7_ssl_x64_static_vs2017\lib</QtLibraryDir>
-    <QtToolsDir>C:\Qt5.9.7_ssl_x64_static_vs2017\bin</QtToolsDir>
-    <QtPluginsLibraryDir>C:\Qt5.9.7_ssl_x64_static_vs2017\plugins</QtPluginsLibraryDir>
+    <QtIncludeDir>C:\Qt\5.12.1\msvc2017_64\include</QtIncludeDir>
+    <QtLibraryDir>C:\Qt\5.12.1\msvc2017_64\lib</QtLibraryDir>
+    <QtToolsDir>C:\Qt\5.12.1\msvc2017_64\bin</QtToolsDir>
+    <QtPluginsLibraryDir>C:\Qt\5.12.1\msvc2017_64\plugins</QtPluginsLibraryDir>
     <ProtobufToolsDir>C:\Tools\vcpkg\installed\x64-windows-static\tools\protobuf</ProtobufToolsDir>
 	<MOC_DEFINES>-DENABLE_BIP70</MOC_DEFINES>
  </PropertyGroup>
