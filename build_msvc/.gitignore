@@ -9,3 +9,5 @@ packages/*
 */x64
 *.vcxproj.user
 *.vcxproj
+*.sln
+*.props

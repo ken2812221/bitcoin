@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-import os
-import re
 import argparse
+import re
+import os
+import shutil
 
 SOURCE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+MSVC_DIR = os.path.abspath(os.path.dirname(__file__))
 
 libs = [
     'libbitcoin_cli',
@@ -44,13 +46,13 @@ def parse_makefile(makefile):
                     break
 
 def set_custom_paths(qtDir, protocPath):
-    with open('build_msvc\\Directory.build.props', 'r', encoding='utf-8') as rfile:
+    with open(os.path.join(MSVC_DIR, 'Directory.Build.props.in'), 'r', encoding='utf-8') as rfile:
         s = rfile.read()
         if qtDir:
-            s = re.sub(r'(<QtBaseDir>)[^<]+', r'\1%s'%qtDir, s, re.M)
+            s = s.replace("@QtBaseDir@", qtDir)
         if protocPath:
-            s = re.sub(r'(<ProtocPath>)[^<]+', r'\1%s'%protocPath, s, re.M)
-    with open('build_msvc\\Directory.build.props', 'w', encoding='utf-8',newline='\n') as wfile:
+            s = s.replace("@ProtocPath@", protocPath)
+    with open(os.path.join(MSVC_DIR, 'Directory.Build.props'), 'w', encoding='utf-8',newline='\n') as wfile:
         wfile.write(s)
 
 def main():
@@ -77,8 +79,9 @@ def main():
             with open(vcxproj_filename, 'w', encoding='utf-8') as vcxproj_file:
                 vcxproj_file.write(vcxproj_in_file.read().replace(
                     '@SOURCE_FILES@\n', content))
-    os.system('copy build_msvc\\bitcoin_config.h src\\config\\bitcoin-config.h')
-    os.system('copy build_msvc\\libsecp256k1_config.h src\\secp256k1\\src\\libsecp256k1-config.h')
+    shutil.copyfile(os.path.join(MSVC_DIR, 'bitcoin_config.h'), os.path.join(SOURCE_DIR, 'config\\bitcoin-config.h'))
+    shutil.copyfile(os.path.join(MSVC_DIR, 'libsecp256k1_config.h'), os.path.join(SOURCE_DIR, 'secp256k1\\src\\libsecp256k1-config.h'))
+    shutil.copyfile(os.path.join(MSVC_DIR, 'bitcoin.sln.in'), os.path.join(MSVC_DIR, 'bitcoin.sln'))
 
 if __name__ == '__main__':
     main()
