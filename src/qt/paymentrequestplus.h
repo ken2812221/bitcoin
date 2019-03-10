@@ -5,10 +5,14 @@
 #ifndef BITCOIN_QT_PAYMENTREQUESTPLUS_H
 #define BITCOIN_QT_PAYMENTREQUESTPLUS_H
 
+#ifndef _MSC_VER
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <qt/paymentrequest.pb.h>
+#ifndef _MSC_VER
 #pragma GCC diagnostic pop
+#endif
 
 #include <amount.h>
 #include <script/script.h>
