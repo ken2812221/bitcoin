@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2011-2019 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,6 +14,7 @@
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
 #include <qt/platformstyle.h>
+#include <qt/walletmodel.h>
 
 #include <QApplication>
 #include <QClipboard>
@@ -36,7 +37,6 @@ SendCoinsEntry::SendCoinsEntry(const PlatformStyle *_platformStyle, QWidget *par
 
     if (platformStyle->getUseExtraSpacing())
         ui->payToLayout->setSpacing(4);
-    ui->addAsLabel->setPlaceholderText(tr("Enter a label for this address to add it to your address book"));
 
     // normal bitcoin address field
     GUIUtil::setupAddressWidget(ui->payTo, this);

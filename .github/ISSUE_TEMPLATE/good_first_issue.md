@@ -2,19 +2,21 @@
 name: Good first issue
 about: '(Regular devs only): Suggest a new good first issue'
 title: ''
-labels: good first issue
+labels: ''
 assignees: ''
 
 ---
 
-The purpose of the `good first issue` label is to highlight which issues are suitable for a new contributor without a deep understanding of the codebase.
+<!-- Needs the label "good first issue" assigned manually before or after opening -->
 
-Useful skills:
+<!-- A good first issue is an uncontroversial issue, that has a relatively unique and obvious solution -->
 
-(For example, “C++11 std::thread”, “Qt5 GUI and async GUI design” or “basic understanding of Bitcoin mining and the Bitcoin Core RPC interface”.)
+<!-- Motivate the issue and explain the solution briefly -->
 
-Want to work on this issue?
+#### Useful skills:
 
-You do not need to request permission to start working on this. You are encouraged to comment on the issue if you are planning to work on it. This will help other contributors monitor which issues are actively being addressed and is also an effective way to request assistance if and when you need it.
+<!-- (For example, “C++11 std::thread”, “Qt5 GUI and async GUI design” or “basic understanding of Bitcoin mining and the Bitcoin Core RPC interface”.) -->
+
+#### Want to work on this issue?
 
 For guidance on contributing, please read [CONTRIBUTING.md](https://github.com/bitcoin/bitcoin/blob/master/CONTRIBUTING.md) before opening your pull request.

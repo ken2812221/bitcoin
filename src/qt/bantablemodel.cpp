@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2011-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,12 +6,14 @@
 
 #include <interfaces/node.h>
 #include <net_types.h> // For banmap_t
-#include <qt/clientmodel.h>
 
-#include <algorithm>
+#include <utility>
 
-#include <QDebug>
+#include <QDateTime>
 #include <QList>
+#include <QLocale>
+#include <QModelIndex>
+#include <QVariant>
 
 bool BannedNodeLessThan::operator()(const CCombinedBan& left, const CCombinedBan& right) const
 {
@@ -78,10 +80,9 @@ public:
     }
 };
 
-BanTableModel::BanTableModel(interfaces::Node& node, ClientModel *parent) :
+BanTableModel::BanTableModel(interfaces::Node& node, QObject* parent) :
     QAbstractTableModel(parent),
-    m_node(node),
-    clientModel(parent)
+    m_node(node)
 {
     columns << tr("IP/Netmask") << tr("Banned Until");
     priv.reset(new BanTablePriv());
@@ -97,13 +98,17 @@ BanTableModel::~BanTableModel()
 
 int BanTableModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return priv->size();
 }
 
 int BanTableModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return columns.length();
 }
 
@@ -122,7 +127,7 @@ QVariant BanTableModel::data(const QModelIndex &index, int role) const
         case Bantime:
             QDateTime date = QDateTime::fromMSecsSinceEpoch(0);
             date = date.addSecs(rec->banEntry.nBanUntil);
-            return date.toString(Qt::SystemLocaleLongDate);
+            return QLocale::system().toString(date, QLocale::LongFormat);
         }
     }
 

@@ -34,37 +34,48 @@ How to Upgrade
 ==============
 
 If you are running an older version, shut it down. Wait until it has completely
-shut down (which might take a few minutes for older versions), then run the
+shut down (which might take a few minutes in some cases), then run the
 installer (on Windows) or just copy over `/Applications/Bitcoin-Qt` (on Mac)
 or `bitcoind`/`bitcoin-qt` (on Linux).
 
 Upgrading directly from a version of Bitcoin Core that has reached its EOL is
-possible, but it might take some time if the datadir needs to be migrated. Old
+possible, but it might take some time if the data directory needs to be migrated. Old
 wallet versions of Bitcoin Core are generally supported.
 
 Compatibility
 ==============
 
-Bitcoin Core is supported and extensively tested on operating systems using
-the Linux kernel, macOS 10.10+, and Windows 7 and newer. It is not recommended
-to use Bitcoin Core on unsupported systems.
+Bitcoin Core is supported and extensively tested on operating systems
+using the Linux kernel, macOS 10.14+, and Windows 7 and newer.  Bitcoin
+Core should also work on most other Unix-like systems but is not as
+frequently tested on them.  It is not recommended to use Bitcoin Core on
+unsupported systems.
 
-Bitcoin Core should also work on most other Unix-like systems but is not
-as frequently tested on them.
-
-From Bitcoin Core 0.17.0 onwards, macOS versions earlier than 10.10 are no
-longer supported, as Bitcoin Core is now built using Qt 5.9.x which requires
-macOS 10.10+. Additionally, Bitcoin Core does not yet change appearance when
-macOS "dark mode" is activated.
-
-In addition to previously supported CPU platforms, this release's pre-compiled
-distribution provides binaries for the RISC-V platform.
+From Bitcoin Core 0.22.0 onwards, macOS versions earlier than 10.14 are no
+longer supported. Additionally, Bitcoin Core does not yet change appearance
+when macOS "dark mode" is activated.
 
 Notable changes
 ===============
 
+P2P and network changes
+-----------------------
+
+Updated RPCs
+------------
+- `getpeerinfo` no longer returns the following fields: `addnode`, `banscore`,
+  and `whitelisted`, which were previously deprecated in 0.21. Instead of
+  `addnode`, the `connection_type` field returns manual. Instead of
+  `whitelisted`, the `permissions` field indicates if the peer has special
+  privileges. The `banscore` field has simply been removed. (#20755)
+
+Changes to Wallet or GUI related RPCs can be found in the GUI or Wallet section below.
+
 New RPCs
 --------
+
+Build System
+------------
 
 New settings
 ------------
@@ -72,30 +83,31 @@ New settings
 Updated settings
 ----------------
 
-Updated RPCs
-------------
+Changes to Wallet or GUI related settings can be found in the GUI or Wallet section below.
 
-Note: some low-level RPC changes mainly useful for testing are described in the
-Low-level Changes section below.
+- Passing an invalid `-rpcauth` argument now cause bitcoind to fail to start.  (#20461)
 
-GUI changes
------------
+Tools and Utilities
+-------------------
 
 Wallet
 ------
 
-- The wallet now by default uses bech32 addresses when using RPC, and creates native segwit change outputs.
-- The way that output trust was computed has been fixed in #16766, which impacts confirmed/unconfirmed balance status and coin selection.
+- A new `listdescriptors` RPC is available to inspect the contents of descriptor-enabled wallets.
+  The RPC returns public versions of all imported descriptors, including their timestamp and flags.
+  For ranged descriptors, it also returns the range boundaries and the next index to generate addresses from. (#20226)
+
+GUI changes
+-----------
 
 Low-level changes
 =================
 
+RPC
+---
+
 Tests
 -----
-
-- `-fallbackfee` was 0 (disabled) by default for the main chain, but 0.0002 by default for the test chains. Now it is 0
-  by default for all chains. Testnet and regtest users will have to add `fallbackfee=0.0002` to their configuration if
-  they weren't setting it and they want it to keep working like before. (#16524)
 
 Credits
 =======

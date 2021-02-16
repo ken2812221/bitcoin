@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2011-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -55,7 +55,7 @@ struct AddressTableEntryLessThan
 static AddressTableEntry::Type translateTransactionType(const QString &strPurpose, bool isMine)
 {
     AddressTableEntry::Type addressType = AddressTableEntry::Hidden;
-    // "refund" addresses aren't shown, and change addresses aren't in mapAddressBook at all.
+    // "refund" addresses aren't shown, and change addresses aren't returned by getAddresses at all.
     if (strPurpose == "send")
         addressType = AddressTableEntry::Sending;
     else if (strPurpose == "receive")
@@ -75,12 +75,15 @@ public:
     explicit AddressTablePriv(AddressTableModel *_parent):
         parent(_parent) {}
 
-    void refreshAddressTable(interfaces::Wallet& wallet)
+    void refreshAddressTable(interfaces::Wallet& wallet, bool pk_hash_only = false)
     {
         cachedAddressTable.clear();
         {
             for (const auto& address : wallet.getAddresses())
             {
+                if (pk_hash_only && !std::holds_alternative<PKHash>(address.dest)) {
+                    continue;
+                }
                 AddressTableEntry::Type addressType = translateTransactionType(
                         QString::fromStdString(address.purpose), address.is_mine);
                 cachedAddressTable.append(AddressTableEntry(addressType,
@@ -159,12 +162,12 @@ public:
     }
 };
 
-AddressTableModel::AddressTableModel(WalletModel *parent) :
+AddressTableModel::AddressTableModel(WalletModel *parent, bool pk_hash_only) :
     QAbstractTableModel(parent), walletModel(parent)
 {
     columns << tr("Label") << tr("Address");
     priv = new AddressTablePriv(this);
-    priv->refreshAddressTable(parent->wallet());
+    priv->refreshAddressTable(parent->wallet(), pk_hash_only);
 }
 
 AddressTableModel::~AddressTableModel()
@@ -174,13 +177,17 @@ AddressTableModel::~AddressTableModel()
 
 int AddressTableModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return priv->size();
 }
 
 int AddressTableModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return columns.length();
 }
 
@@ -254,7 +261,7 @@ bool AddressTableModel::setData(const QModelIndex &index, const QVariant &value,
         } else if(index.column() == Address) {
             CTxDestination newAddress = DecodeDestination(value.toString().toStdString());
             // Refuse to set invalid address, set error status and return false
-            if(boost::get<CNoDestination>(&newAddress))
+            if(std::get_if<CNoDestination>(&newAddress))
             {
                 editStatus = INVALID_ADDRESS;
                 return false;

@@ -1,16 +1,15 @@
-// Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2011-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <qt/peertablemodel.h>
 
-#include <qt/clientmodel.h>
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 
 #include <interfaces/node.h>
 
-#include <algorithm>
+#include <utility>
 
 #include <QDebug>
 #include <QList>
@@ -30,14 +29,16 @@ bool NodeLessThan::operator()(const CNodeCombinedStats &left, const CNodeCombine
         return pLeft->nodeid < pRight->nodeid;
     case PeerTableModel::Address:
         return pLeft->addrName.compare(pRight->addrName) < 0;
-    case PeerTableModel::Subversion:
-        return pLeft->cleanSubVer.compare(pRight->cleanSubVer) < 0;
+    case PeerTableModel::Network:
+        return pLeft->m_network < pRight->m_network;
     case PeerTableModel::Ping:
-        return pLeft->dMinPing < pRight->dMinPing;
+        return pLeft->m_min_ping_usec < pRight->m_min_ping_usec;
     case PeerTableModel::Sent:
         return pLeft->nSendBytes < pRight->nSendBytes;
     case PeerTableModel::Received:
         return pLeft->nRecvBytes < pRight->nRecvBytes;
+    case PeerTableModel::Subversion:
+        return pLeft->cleanSubVer.compare(pRight->cleanSubVer) < 0;
     }
 
     return false;
@@ -100,13 +101,11 @@ public:
     }
 };
 
-PeerTableModel::PeerTableModel(interfaces::Node& node, ClientModel *parent) :
+PeerTableModel::PeerTableModel(interfaces::Node& node, QObject* parent) :
     QAbstractTableModel(parent),
     m_node(node),
-    clientModel(parent),
     timer(nullptr)
 {
-    columns << tr("NodeId") << tr("Node/Service") << tr("Ping") << tr("Sent") << tr("Received") << tr("User Agent");
     priv.reset(new PeerTablePriv());
 
     // set up timer for auto refresh
@@ -135,13 +134,17 @@ void PeerTableModel::stopAutoRefresh()
 
 int PeerTableModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return priv->size();
 }
 
 int PeerTableModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    if (parent.isValid()) {
+        return 0;
+    }
     return columns.length();
 }
 
@@ -160,23 +163,32 @@ QVariant PeerTableModel::data(const QModelIndex &index, int role) const
         case Address:
             // prepend to peer address down-arrow symbol for inbound connection and up-arrow for outbound connection
             return QString(rec->nodeStats.fInbound ? "↓ " : "↑ ") + QString::fromStdString(rec->nodeStats.addrName);
-        case Subversion:
-            return QString::fromStdString(rec->nodeStats.cleanSubVer);
+        case Network:
+            return GUIUtil::NetworkToQString(rec->nodeStats.m_network);
         case Ping:
-            return GUIUtil::formatPingTime(rec->nodeStats.dMinPing);
+            return GUIUtil::formatPingTime(rec->nodeStats.m_min_ping_usec);
         case Sent:
             return GUIUtil::formatBytes(rec->nodeStats.nSendBytes);
         case Received:
             return GUIUtil::formatBytes(rec->nodeStats.nRecvBytes);
+        case Subversion:
+            return QString::fromStdString(rec->nodeStats.cleanSubVer);
         }
     } else if (role == Qt::TextAlignmentRole) {
         switch (index.column()) {
+            case Network:
+                return QVariant(Qt::AlignCenter);
             case Ping:
             case Sent:
             case Received:
                 return QVariant(Qt::AlignRight | Qt::AlignVCenter);
             default:
                 return QVariant();
+        }
+    } else if (role == StatsRole) {
+        switch (index.column()) {
+        case NetNodeId: return QVariant::fromValue(rec);
+        default: return QVariant();
         }
     }
 
@@ -211,11 +223,6 @@ QModelIndex PeerTableModel::index(int row, int column, const QModelIndex &parent
     if (data)
         return createIndex(row, column, data);
     return QModelIndex();
-}
-
-const CNodeCombinedStats *PeerTableModel::getNodeStats(int idx)
-{
-    return priv->index(idx);
 }
 
 void PeerTableModel::refresh()

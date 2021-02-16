@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Bitcoin Core developers
+// Copyright (c) 2011-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,12 +7,12 @@
 #include <qt/bitcoinunits.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
+#include <qt/walletmodel.h>
 
 #include <clientversion.h>
 #include <streams.h>
 
-#include <algorithm>
-
+#include <utility>
 
 RecentRequestsTableModel::RecentRequestsTableModel(WalletModel *parent) :
     QAbstractTableModel(parent), walletModel(parent)
@@ -36,15 +36,17 @@ RecentRequestsTableModel::~RecentRequestsTableModel()
 
 int RecentRequestsTableModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
-
+    if (parent.isValid()) {
+        return 0;
+    }
     return list.length();
 }
 
 int RecentRequestsTableModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
-
+    if (parent.isValid()) {
+        return 0;
+    }
     return columns.length();
 }
 
@@ -82,7 +84,7 @@ QVariant RecentRequestsTableModel::data(const QModelIndex &index, int role) cons
             if (rec->recipient.amount == 0 && role == Qt::DisplayRole)
                 return tr("(no amount requested)");
             else if (role == Qt::EditRole)
-                return BitcoinUnits::format(walletModel->getOptionsModel()->getDisplayUnit(), rec->recipient.amount, false, BitcoinUnits::separatorNever);
+                return BitcoinUnits::format(walletModel->getOptionsModel()->getDisplayUnit(), rec->recipient.amount, false, BitcoinUnits::SeparatorStyle::NEVER);
             else
                 return BitcoinUnits::format(walletModel->getOptionsModel()->getDisplayUnit(), rec->recipient.amount);
         }
@@ -179,7 +181,7 @@ void RecentRequestsTableModel::addNewRequest(const SendCoinsRecipient &recipient
 // called from ctor when loading from wallet
 void RecentRequestsTableModel::addNewRequest(const std::string &recipient)
 {
-    std::vector<char> data(recipient.begin(), recipient.end());
+    std::vector<uint8_t> data(recipient.begin(), recipient.end());
     CDataStream ss(data, SER_DISK, CLIENT_VERSION);
 
     RecentRequestEntry entry;
@@ -213,10 +215,10 @@ void RecentRequestsTableModel::updateDisplayUnit()
     updateAmountColumnTitle();
 }
 
-bool RecentRequestEntryLessThan::operator()(RecentRequestEntry &left, RecentRequestEntry &right) const
+bool RecentRequestEntryLessThan::operator()(const RecentRequestEntry& left, const RecentRequestEntry& right) const
 {
-    RecentRequestEntry *pLeft = &left;
-    RecentRequestEntry *pRight = &right;
+    const RecentRequestEntry* pLeft = &left;
+    const RecentRequestEntry* pRight = &right;
     if (order == Qt::DescendingOrder)
         std::swap(pLeft, pRight);
 

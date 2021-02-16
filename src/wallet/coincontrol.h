@@ -6,13 +6,17 @@
 #define BITCOIN_WALLET_COINCONTROL_H
 
 #include <optional.h>
+#include <outputtype.h>
 #include <policy/feerate.h>
 #include <policy/fees.h>
 #include <primitives/transaction.h>
-#include <wallet/wallet.h>
+#include <script/standard.h>
 
 const int DEFAULT_MIN_DEPTH = 0;
 const int DEFAULT_MAX_DEPTH = 9999999;
+
+//! Default for -avoidpartialspends
+static constexpr bool DEFAULT_AVOIDPARTIALSPENDS = false;
 
 /** Coin Control Features. */
 class CCoinControl
@@ -22,6 +26,8 @@ public:
     CTxDestination destChange;
     //! Override the default change type if set, ignored if destChange is set
     Optional<OutputType> m_change_type;
+    //! If false, only selected inputs are used
+    bool m_add_inputs;
     //! If false, allows unselected inputs, but requires all selected inputs be used
     bool fAllowOtherInputs;
     //! Includes watch only addresses which are solvable
